@@ -667,17 +667,8 @@ fn gen_handler_trait(def: &SymbolDef) -> TokenStream2 {
     // 确定返回类型和方法名
     let (method_name, return_type) = match def.category {
         Category::Monitor => {
-            // Monitor 返回 Receiver<ProducedType>（通过 channel 持续产出触发消息）
-            let ret = def
-                .contexts
-                .iter()
-                .find(|c| matches!(c.op, CtxOp::Produce))
-                .map(|c| {
-                    let ty = &c.ty;
-                    quote!(trade_lang_core::monitor_mpsc::Receiver<#ty>)
-                })
-                .unwrap_or(quote!(trade_lang_core::monitor_mpsc::Receiver<()>));
-            (format_ident!("start"), ret)
+            // Monitor 直接返回 Receiver<MonitorMessage>，impl 侧自行填充多个 context
+            (format_ident!("start"), quote!(trade_lang_core::monitor_mpsc::Receiver<trade_lang_core::MonitorMessage>))
         }
         Category::Executor => {
             let inner = match &def.returns {
@@ -724,8 +715,8 @@ fn gen_adapter(def: &SymbolDef) -> TokenStream2 {
     let param_extractions = gen_param_extractions(def);
     let param_names: Vec<_> = def.params.iter().map(|p| &p.name).collect();
 
-    // context 处理
-    let (ctx_pre, ctx_args, ctx_post) = gen_context_handling(def);
+    // context 处理：context 缺失时的兜底行为，按 adapter 返回类型决定
+    let (ctx_pre, ctx_args, ctx_post) = gen_context_handling(def, &def.category);
 
     match def.category {
         Category::Monitor => gen_monitor_adapter(
@@ -815,7 +806,10 @@ fn gen_param_extractions(def: &SymbolDef) -> Vec<TokenStream2> {
 /// pre_code: 获取 context Arc / consume
 /// arg_tokens: 传给 handler trait 方法的 context 参数
 /// post_code: produce context 等后处理
-fn gen_context_handling(def: &SymbolDef) -> (TokenStream2, Vec<TokenStream2>, TokenStream2) {
+fn gen_context_handling(
+    def: &SymbolDef,
+    category: &Category,
+) -> (TokenStream2, Vec<TokenStream2>, TokenStream2) {
     let use_contexts: Vec<_> = def
         .contexts
         .iter()
@@ -836,10 +830,13 @@ fn gen_context_handling(def: &SymbolDef) -> (TokenStream2, Vec<TokenStream2>, To
         let proto_str = c.protocol.value();
         let proto_ident = format_ident!("{}", proto_str);
         let ctx_ty = &c.ty;
+        let nf = make_context_not_found(category, &proto_str);
         pre = quote! {
             #pre
-            let #proto_ident: ::std::sync::Arc<#ctx_ty> = ctx.consume_context::<#ctx_ty>(#proto_str).await
-                .expect(concat!("implicit context '", #proto_str, "' not available"));
+            let #proto_ident: ::std::sync::Arc<#ctx_ty> = match ctx.consume_context::<#ctx_ty>(#proto_str).await {
+                Some(v) => v,
+                None => { #nf }
+            };
         };
         args.push(quote!(#proto_ident));
     }
@@ -849,10 +846,13 @@ fn gen_context_handling(def: &SymbolDef) -> (TokenStream2, Vec<TokenStream2>, To
         let proto_str = c.protocol.value();
         let proto_ident = format_ident!("{}", proto_str);
         let ctx_ty = &c.ty;
+        let nf = make_context_not_found(category, &proto_str);
         pre = quote! {
             #pre
-            let #proto_ident: ::std::sync::Arc<#ctx_ty> = ctx.get_context::<#ctx_ty>(#proto_str).await
-                .expect(concat!("implicit context '", #proto_str, "' not available"));
+            let #proto_ident: ::std::sync::Arc<#ctx_ty> = match ctx.get_context::<#ctx_ty>(#proto_str).await {
+                Some(v) => v,
+                None => { #nf }
+            };
         };
         // handler 接收 &T，从 Arc 自动 deref
         args.push(quote!(&#proto_ident));
@@ -861,6 +861,29 @@ fn gen_context_handling(def: &SymbolDef) -> (TokenStream2, Vec<TokenStream2>, To
     // Produce contexts: handled per-category (from handler return value)
 
     (pre, args, post)
+}
+
+/// 根据 adapter 类型和 context 键名，生成“context 不存在”时的兜底代码
+ fn make_context_not_found(category: &Category, proto_str: &str) -> TokenStream2 {
+    let msg = format!("[context] '{}' not available", proto_str);
+    match category {
+        Category::Executor => quote! {
+            log::warn!(#msg);
+            ctx.signal_done();
+            return None;
+        },
+        Category::DataItem => quote! {
+            log::warn!(#msg);
+            ctx.signal_done();
+            return trade_meta_compiler::RuntimeValue::Unit;
+        },
+        Category::Condition => quote! {
+            log::warn!(#msg);
+            return false;
+        },
+        // Monitor 不使用 ctx_pre，这个分支不会被执行到
+        Category::Monitor => quote! {},
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -875,42 +898,9 @@ fn gen_monitor_adapter(
     _ctx_post: &TokenStream2,
     def: &SymbolDef,
 ) -> TokenStream2 {
-    let produce_ctx = def.contexts.iter().find(|c| matches!(c.op, CtxOp::Produce));
-
-    // Monitor adapter: bridge typed Receiver<T> to generic Receiver<MonitorMessage>
-    let body = if let Some(pc) = produce_ctx {
-        let proto_str = pc.protocol.value();
-        quote! {
-            // Call typed handler → get typed Receiver
-            let mut typed_rx = self.0.start(#(#param_names,)* cancel.clone()).await;
-
-            // Forward typed messages to generic MonitorMessage channel
-            let (tx, rx) = trade_lang_core::monitor_mpsc::channel(32);
-            trade_lang_core::spawn_task(async move {
-                while let Some(val) = typed_rx.recv().await {
-                    let msg = trade_lang_core::MonitorMessage::single(#proto_str, val);
-                    if tx.send(msg).await.is_err() {
-                        break; // receiver dropped, stop forwarding
-                    }
-                }
-            });
-            rx
-        }
-    } else {
-        // No produce context — forward () as empty messages
-        quote! {
-            let mut typed_rx = self.0.start(#(#param_names,)* cancel.clone()).await;
-            let (tx, rx) = trade_lang_core::monitor_mpsc::channel(32);
-            trade_lang_core::spawn_task(async move {
-                while let Some(_) = typed_rx.recv().await {
-                    let msg = trade_lang_core::MonitorMessage { contexts: vec![] };
-                    if tx.send(msg).await.is_err() {
-                        break;
-                    }
-                }
-            });
-            rx
-        }
+    // Monitor adapter: impl 直接返回 Receiver<MonitorMessage>，adapter 原样转发
+    let body = quote! {
+        self.0.start(#(#param_names,)* cancel).await
     };
 
     quote! {
@@ -962,7 +952,8 @@ fn gen_executor_adapter(
                 match self.0.execute(#(#param_names,)* #(#ctx_args,)* ctx).await {
                     Ok(()) => {},
                     Err(e) => {
-                        log::error!("[executor] execute failed: {}", e);
+                        log::warn!("[executor] execute failed: {}, triggering finally", e);
+                        ctx.signal_done();
                         return None;
                     }
                 }
@@ -976,7 +967,8 @@ fn gen_executor_adapter(
                     let __result = match self.0.execute(#(#param_names,)* #(#ctx_args,)* ctx).await {
                         Ok(v) => v,
                         Err(e) => {
-                            log::error!("[executor] execute failed: {}", e);
+                            log::warn!("[executor] execute failed: {}, triggering finally", e);
+                            ctx.signal_done();
                             return None;
                         }
                     };
@@ -1002,7 +994,8 @@ fn gen_executor_adapter(
                     let (#(#ret_idents),*) = match self.0.execute(#(#param_names,)* #(#ctx_args,)* ctx).await {
                         Ok(v) => v,
                         Err(e) => {
-                            log::error!("[executor] execute failed: {}", e);
+                            log::warn!("[executor] execute failed: {}, triggering finally", e);
+                            ctx.signal_done();
                             return None;
                         }
                     };
