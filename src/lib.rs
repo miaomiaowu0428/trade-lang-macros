@@ -82,11 +82,11 @@ impl TradeType {
     fn rust_type(&self) -> TokenStream2 {
         match self {
             Self::Price
-            | Self::Amount
             | Self::Percent
             | Self::Count
             | Self::Number
             | Self::TimePoint => quote!(f64),
+            Self::Amount => quote!(trade_meta_compiler::RuntimeValue),
             Self::Duration => quote!(u64),
             Self::StringTy | Self::Address => quote!(::std::string::String),
             Self::Bool => quote!(bool),
@@ -134,11 +134,11 @@ impl TradeType {
     fn extract_from_rv(&self, rv_expr: &TokenStream2) -> TokenStream2 {
         match self {
             Self::Price
-            | Self::Amount
             | Self::Percent
             | Self::Count
             | Self::Number
             | Self::TimePoint => quote!(#rv_expr.as_f64()),
+            Self::Amount => quote!(#rv_expr.clone()),
             Self::Duration => quote!(#rv_expr.as_f64() as u64),
             Self::StringTy | Self::Address => quote!({
                 match #rv_expr {
@@ -192,9 +192,7 @@ impl TradeType {
     fn wrap_in_rv(&self, expr: &TokenStream2) -> TokenStream2 {
         match self {
             Self::Price => quote!(trade_meta_compiler::RuntimeValue::Price(#expr)),
-            Self::Amount => {
-                quote!(trade_meta_compiler::RuntimeValue::Amount(#expr, ::std::string::String::new()))
-            }
+            Self::Amount => quote!(#expr),
             Self::Duration => {
                 quote!(trade_meta_compiler::RuntimeValue::Duration(#expr as f64))
             }
