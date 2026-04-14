@@ -81,11 +81,9 @@ impl TradeType {
     /// DSL 类型 → Rust 类型 token
     fn rust_type(&self) -> TokenStream2 {
         match self {
-            Self::Price
-            | Self::Percent
-            | Self::Count
-            | Self::Number
-            | Self::TimePoint => quote!(f64),
+            Self::Price | Self::Percent | Self::Count | Self::Number | Self::TimePoint => {
+                quote!(f64)
+            }
             Self::Amount => quote!(trade_meta_compiler::RuntimeValue),
             Self::Duration => quote!(u64),
             Self::StringTy | Self::Address => quote!(::std::string::String),
@@ -133,11 +131,9 @@ impl TradeType {
     /// 从 RuntimeValue 提取该类型的值（用于 adapter 参数提取）
     fn extract_from_rv(&self, rv_expr: &TokenStream2) -> TokenStream2 {
         match self {
-            Self::Price
-            | Self::Percent
-            | Self::Count
-            | Self::Number
-            | Self::TimePoint => quote!(#rv_expr.as_f64()),
+            Self::Price | Self::Percent | Self::Count | Self::Number | Self::TimePoint => {
+                quote!(#rv_expr.as_f64())
+            }
             Self::Amount => quote!(#rv_expr.clone()),
             Self::Duration => quote!(#rv_expr.as_f64() as u64),
             Self::StringTy | Self::Address => quote!({
@@ -666,7 +662,10 @@ fn gen_handler_trait(def: &SymbolDef) -> TokenStream2 {
     let (method_name, return_type) = match def.category {
         Category::Monitor => {
             // Monitor 直接返回 Receiver<MonitorMessage>，impl 侧自行填充多个 context
-            (format_ident!("start"), quote!(trade_lang_core::monitor_mpsc::Receiver<trade_lang_core::MonitorMessage>))
+            (
+                format_ident!("start"),
+                quote!(trade_lang_core::monitor_mpsc::Receiver<trade_lang_core::MonitorMessage>),
+            )
         }
         Category::Executor => {
             let inner = match &def.returns {
@@ -862,7 +861,7 @@ fn gen_context_handling(
 }
 
 /// 根据 adapter 类型和 context 键名，生成“context 不存在”时的兜底代码
- fn make_context_not_found(category: &Category, proto_str: &str) -> TokenStream2 {
+fn make_context_not_found(category: &Category, proto_str: &str) -> TokenStream2 {
     let msg = format!("[context] '{}' not available", proto_str);
     match category {
         Category::Executor => quote! {
