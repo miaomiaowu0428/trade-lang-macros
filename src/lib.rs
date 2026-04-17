@@ -690,7 +690,13 @@ fn gen_handler_trait(def: &SymbolDef) -> TokenStream2 {
             };
             (format_ident!("get"), ret)
         }
-        Category::Condition => (format_ident!("evaluate"), quote!(bool)),
+        Category::Condition => (
+            format_ident!("evaluate"),
+            quote!((
+                bool,
+                ::std::option::Option<trade_meta_compiler::RuntimeValue>
+            )),
+        ),
     };
 
     quote! {
@@ -876,7 +882,7 @@ fn make_context_not_found(category: &Category, proto_str: &str) -> TokenStream2 
         },
         Category::Condition => quote! {
             log::warn!(#msg);
-            return false;
+            return (false, None);
         },
         // Monitor 不使用 ctx_pre，这个分支不会被执行到
         Category::Monitor => quote! {},
@@ -1095,12 +1101,12 @@ fn gen_condition_adapter(
                 &self,
                 args: &::std::collections::HashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
                 ctx: &::std::sync::Arc<trade_lang_core::TradeTaskContext>,
-            ) -> bool {
+            ) -> (bool, ::std::option::Option<trade_meta_compiler::RuntimeValue>) {
                 #(#param_extractions)*
                 #ctx_pre
-                let __result = self.0.evaluate(#(#param_names,)* #(#ctx_args,)* ctx).await;
+                let (__triggered, _side_value) = self.0.evaluate(#(#param_names,)* #(#ctx_args,)* ctx).await;
                 #ctx_post
-                __result
+                (__triggered, _side_value)
             }
         }
     }
