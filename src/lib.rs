@@ -286,8 +286,13 @@ fn parse_single_trade_type(input: ParseStream) -> syn::Result<TradeType> {
     if input.peek(syn::token::Bracket) {
         let inner;
         bracketed!(inner in input);
-        let type_ident: Ident = inner.parse()?;
-        let elem = TradeType::from_ident(&type_ident)?;
+        let elem = parse_trade_type(&inner)?;
+        if !inner.is_empty() {
+            return Err(syn::Error::new(
+                inner.span(),
+                "Unexpected tokens in list type, expected a single element type",
+            ));
+        }
         Ok(TradeType::List(Box::new(elem)))
     } else if input.peek(syn::token::Paren) {
         let inner;
