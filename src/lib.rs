@@ -918,7 +918,7 @@ fn gen_monitor_adapter(
         impl<H: #trait_name + 'static> trade_lang_core::MonitorHandler for #adapter_name<H> {
             async fn start(
                 &self,
-                args: &::std::collections::HashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
+                args: &::ahash::AHashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
                 cancel: trade_lang_core::CancellationToken,
             ) -> trade_lang_core::monitor_mpsc::Receiver<trade_lang_core::MonitorMessage> {
                 #(#param_extractions)*
@@ -1026,7 +1026,7 @@ fn gen_executor_adapter(
 
             async fn execute(
                 &self,
-                args: &::std::collections::HashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
+                args: &::ahash::AHashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
                 ctx: &::std::sync::Arc<trade_lang_core::TradeTaskContext>,
             ) -> Option<trade_meta_compiler::RuntimeValue> {
                 #(#param_extractions)*
@@ -1072,7 +1072,7 @@ fn gen_data_item_adapter(
 
             async fn get(
                 &self,
-                args: &::std::collections::HashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
+                args: &::ahash::AHashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
                 ctx: &::std::sync::Arc<trade_lang_core::TradeTaskContext>,
             ) -> trade_meta_compiler::RuntimeValue {
                 #(#param_extractions)*
@@ -1104,7 +1104,7 @@ fn gen_condition_adapter(
         impl<H: #trait_name + 'static> trade_lang_core::ConditionHandler for #adapter_name<H> {
             async fn evaluate(
                 &self,
-                args: &::std::collections::HashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
+                args: &::ahash::AHashMap<::std::string::String, trade_meta_compiler::RuntimeValue>,
                 ctx: &::std::sync::Arc<trade_lang_core::TradeTaskContext>,
             ) -> (bool, ::std::option::Option<trade_meta_compiler::RuntimeValue>) {
                 #(#param_extractions)*
