@@ -346,10 +346,7 @@ impl Parse for SymbolDef {
             other => {
                 return Err(syn::Error::new(
                     cat_ident.span(),
-                    format!(
-                        "Expected 'monitor', 'executor', 'data_item', or 'condition', got '{}'",
-                        other
-                    ),
+                    format!("Expected 'monitor', 'executor', 'data_item', or 'condition', got '{}'", other),
                 ));
             }
         };
@@ -378,10 +375,7 @@ impl Parse for SymbolDef {
                         other => {
                             return Err(syn::Error::new(
                                 op_ident.span(),
-                                format!(
-                                    "Expected 'produce', 'need', or 'consume', got '{}'",
-                                    other
-                                ),
+                                format!("Expected 'produce', 'need', or 'consume', got '{}'", other),
                             ));
                         }
                     };
@@ -446,10 +440,7 @@ impl Parse for SymbolDef {
                 other => {
                     return Err(syn::Error::new(
                         kw.span(),
-                        format!(
-                            "Expected 'context', 'param', 'optional', or 'returns', got '{}'",
-                            other
-                        ),
+                        format!("Expected 'context', 'param', 'optional', or 'returns', got '{}'", other),
                     ));
                 }
             }
@@ -527,9 +518,7 @@ fn gen_metadata(def: &SymbolDef) -> TokenStream2 {
         }
         Some(r) => {
             let specs: Vec<_> = r.types.iter().map(|t| t.type_spec()).collect();
-            quote!(Some(trade_meta_compiler::TypeSpec::Tuple(
-                vec![#(#specs),*]
-            )))
+            quote!(Some(trade_meta_compiler::TypeSpec::Tuple(vec![#(#specs),*])))
         }
     };
 
@@ -697,10 +686,7 @@ fn gen_handler_trait(def: &SymbolDef) -> TokenStream2 {
         }
         Category::Condition => (
             format_ident!("evaluate"),
-            quote!((
-                bool,
-                ::std::option::Option<trade_meta_compiler::RuntimeValue>
-            )),
+            quote!((bool, ::std::option::Option<trade_meta_compiler::RuntimeValue>)),
         ),
     };
 
@@ -814,20 +800,9 @@ fn gen_param_extractions(def: &SymbolDef) -> Vec<TokenStream2> {
 /// pre_code: 获取 context Arc / consume
 /// arg_tokens: 传给 handler trait 方法的 context 参数
 /// post_code: produce context 等后处理
-fn gen_context_handling(
-    def: &SymbolDef,
-    category: &Category,
-) -> (TokenStream2, Vec<TokenStream2>, TokenStream2) {
-    let use_contexts: Vec<_> = def
-        .contexts
-        .iter()
-        .filter(|c| matches!(c.op, CtxOp::Need))
-        .collect();
-    let consume_contexts: Vec<_> = def
-        .contexts
-        .iter()
-        .filter(|c| matches!(c.op, CtxOp::Consume))
-        .collect();
+fn gen_context_handling(def: &SymbolDef, category: &Category) -> (TokenStream2, Vec<TokenStream2>, TokenStream2) {
+    let use_contexts: Vec<_> = def.contexts.iter().filter(|c| matches!(c.op, CtxOp::Need)).collect();
+    let consume_contexts: Vec<_> = def.contexts.iter().filter(|c| matches!(c.op, CtxOp::Consume)).collect();
 
     let mut pre = quote!();
     let mut args = Vec::new();
@@ -948,9 +923,7 @@ fn gen_executor_adapter(
         }
         Some(r) => {
             let specs: Vec<_> = r.types.iter().map(|t| t.type_spec()).collect();
-            quote!(Some(trade_meta_compiler::TypeSpec::Tuple(
-                vec![#(#specs),*]
-            )))
+            quote!(Some(trade_meta_compiler::TypeSpec::Tuple(vec![#(#specs),*])))
         }
     };
 
@@ -1008,9 +981,7 @@ fn gen_executor_adapter(
                         }
                     };
                 },
-                quote!(Some(trade_meta_compiler::RuntimeValue::Tuple(
-                    vec![#(#wraps),*]
-                ))),
+                quote!(Some(trade_meta_compiler::RuntimeValue::Tuple(vec![#(#wraps),*]))),
             )
         }
     };
